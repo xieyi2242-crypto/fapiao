@@ -245,6 +245,5 @@ def export_excel():
             ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
     output_stream.seek(0)
     return send_file(output_stream, as_attachment=True, download_name=f"报销汇总_{datetime.now().strftime('%Y%m%d')}.xlsx")
-
-if __name__ == '__main__':
-    app.run(debug=True)
+  if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000)
