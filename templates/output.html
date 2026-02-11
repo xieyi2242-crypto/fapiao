@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>报销库</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
+        .top-nav { max-width: 1100px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center; }
+        .claim-card { background: white; max-width: 1100px; margin: 0 auto 30px; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #28a745; padding-bottom: 15px; }
+        .btn { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; border: none; }
+        .btn-gray { background: #6c757d; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-red { background: #dc3545; color: white; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+        #preview_modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); }
+        .modal-content { position: relative; background: #fff; margin: 5vh auto; width: 90%; max-width: 850px; aspect-ratio: 1/0.75; border-radius: 8px; padding: 5px; }
+        iframe { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+    <form id="main_form" method="post">
+        <div class="top-nav">
+            <a href="/" class="btn btn-gray">← 返回录入页</a>
+            <div style="display:flex; gap:10px;">
+                <button type="submit" class="btn btn-blue" formaction="/merge_claims">合并选中单据</button>
+                <button type="submit" class="btn btn-green" formaction="/export_excel">导出选中 (Excel)</button>
+            </div>
+        </div>
+
+        {% for claim in claims %}
+        <div class="claim-card">
+            <div class="header">
+                <div>
+                    <input type="checkbox" name="selected_claims" value="{{ claim.id }}" style="transform: scale(1.3); margin-right: 10px;">
+                    <strong>报销人：{{ claim.employee_name }}</strong>
+                    <span style="margin-left:20px; font-size:13px;">报销日期：
+                        <input type="date" value="{{ claim.claim_date }}" onchange="saveDate('{{ claim.id }}', this.value)" style="padding:2px;">
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight:bold; color:#d9534f; margin-right:20px;">￥{{ claim.total_amount }}</span>
+                    <a href="/delete_claim/{{ claim.id }}" class="btn btn-red" onclick="return confirm('确认删除？')">删除</a>
+                </div>
+            </div>
+            <table>
+                <thead><tr><th>日期</th><th>销售方</th><th>科目</th><th>内容</th><th>金额</th><th>操作</th></tr></thead>
+                <tbody>
+                    {% for inv in claim.invoices %}
+                    <tr>
+                        <td>{{ inv.inv_date }}</td><td>{{ inv.seller }}</td><td>{{ inv.category }}</td><td>{{ inv.content }}</td><td>￥{{ inv.amount }}</td>
+                        <td><button type="button" onclick="openPreview('/static/uploads/{{ inv.file_path }}')" style="color:#007bff; background:none; border:none; cursor:pointer; text-decoration:underline;">预览</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </form>
+    <div id="preview_modal"><div class="modal-content"><button onclick="closePreview()" style="position:absolute;top:-30px;right:0;color:white;background:none;border:none;cursor:pointer;">[关闭]</button><iframe id="preview_frame"></iframe></div></div>
+    <script>
+        function saveDate(id, date) { fetch('/update_claim_date', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:id, date:date})}); }
+        function openPreview(url) { document.getElementById('preview_frame').src = url; document.getElementById('preview_modal').style.display = 'block'; }
+        function closePreview() { document.getElementById('preview_modal').style.display = 'none'; }
+    </script>
+</body>
+</html>

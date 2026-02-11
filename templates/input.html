@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>发票管理系统</title>
+    <style>
+        body { font-family: 'PingFang SC', sans-serif; background: #f4f7f9; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .nav-btn { position: absolute; top: 30px; right: 30px; background: #6c757d; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; }
+        .upload-area { border: 2px dashed #007bff; background: #fcfdfe; padding: 30px; text-align: center; border-radius: 10px; margin-bottom: 30px; }
+        .filter-row { background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 20px; align-items: center; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #eee; text-align: left; font-size: 13px; }
+        th { background: #f8f9fa; }
+        .preview-input { width: 90%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        .btn { border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; padding: 6px 12px; }
+        .btn-blue { background: #007bff; }
+        .btn-green { background: #28a745; }
+        .btn-red { background: #dc3545; }
+        .btn-edit { background: #ffc107; color: #212529; }
+        .summary-bar { background: #f8f9fa; padding: 15px; text-align: right; font-weight: bold; border: 1px solid #eee; margin-top: -1px; }
+        .emp-bar { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; display: flex; align-items: center; gap: 15px; }
+        #preview_modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); }
+        .modal-content { position: relative; background: #fff; margin: 5vh auto; width: 90%; max-width: 850px; aspect-ratio: 1/0.75; border-radius: 8px; padding: 5px; }
+        iframe { width: 100%; height: 100%; border: none; }
+        .filename-link { color: #007bff; cursor: pointer; text-decoration: underline; font-weight: bold; }
+        .edit-mode { display: none; }
+        #selected_total_box { margin-left: auto; font-size: 16px; color: #d9534f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/output" class="nav-btn">查看报销库 →</a>
+        <h2>1. 上传与解析</h2>
+        <div class="upload-area">
+            <input type="file" id="file_input" multiple accept=".pdf,.xml" style="display:none" onchange="handleFiles(this)">
+            <button class="btn btn-blue" onclick="document.getElementById('file_input').click()">选择并解析发票</button>
+        </div>
+
+        <div id="preview_section" style="display:none;">
+            <table>
+                <thead>
+                    <tr><th width="40">序</th><th>文件名</th><th width="100">日期</th><th width="80">金额</th><th width="150">销售方</th><th>科目</th><th>内容</th><th>报销人</th><th width="40">操作</th></tr>
+                </thead>
+                <tbody id="preview_body"></tbody>
+            </table>
+            <div class="summary-bar">解析汇总：<span id="preview_total" style="color:#d9534f">￥0.00</span></div>
+            <div style="text-align: right; margin-top: 15px;"><button class="btn btn-blue" onclick="saveBatchInvoices()">确认存入待处理列表</button></div>
+        </div>
+
+        <hr style="margin: 40px 0; border:0; border-top:1px solid #eee;">
+        <h2>2. 待处理列表</h2>
+
+        <div class="filter-row">
+            <strong>高级筛选：</strong>
+            科目: <select id="f_cat" onchange="applyFilter()"><option value="">全部</option>{% for c in categories %}<option value="{{c}}">{{c}}</option>{% endfor %}</select>
+            报销人: <select id="f_cla" onchange="applyFilter()"><option value="">全部</option>{% for c in claimants %}<option value="{{c}}">{{c}}</option>{% endfor %}</select>
+            <span style="margin-left:auto;">日期：<input type="date" id="d_start"> 至 <input type="date" id="d_end"></span>
+            <button class="btn btn-blue" onclick="applyFilter()">筛选</button>
+            <button class="btn btn-gray" style="background:#6c757d;" onclick="resetFilter()">重置</button>
+        </div>
+
+        <form action="/create_claim" method="post">
+            <div class="emp-bar">
+                <strong>生成单据报销人:</strong>
+                <input type="text" name="employee_name" placeholder="姓名" required style="padding: 5px;">
+                <button type="submit" class="btn btn-green">生成报销单</button>
+                <div id="selected_total_box">当前选中总额：<span id="selected_total_amount">￥0.00</span></div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="40"><input type="checkbox" id="check_all" onclick="toggleAll(this)"></th>
+                        <th>日期</th><th>金额</th><th>销售方</th><th>科目</th><th>内容</th><th>报销人</th><th>预览</th><th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="main_body">
+                    {% for inv in invoices %}
+                    <tr id="row-{{ inv.id }}" class="inv-row" data-date="{{ inv.inv_date }}" data-cat="{{ inv.category }}" data-cla="{{ inv.claimant }}">
+                        <td><input type="checkbox" name="selected_invoices" value="{{ inv.id }}" data-amount="{{ inv.amount }}" onchange="updateSelectedTotal()"></td>
+                        <td>{{ inv.inv_date }}</td>
+                        <td><span class="view-text">{{ inv.amount }}</span><input type="number" step="0.01" class="preview-input edit-mode" id="amt-{{ inv.id }}" value="{{ inv.amount }}"></td>
+                        <td>{{ inv.seller }}</td>
+                        <td><span class="view-text">{{ inv.category }}</span><input type="text" class="preview-input edit-mode" id="cat-{{ inv.id }}" value="{{ inv.category }}"></td>
+                        <td><span class="view-text">{{ inv.content }}</span><input type="text" class="preview-input edit-mode" id="con-{{ inv.id }}" value="{{ inv.content }}"></td>
+                        <td><span class="view-text">{{ inv.claimant }}</span><input type="text" class="preview-input edit-mode" id="cla-{{ inv.id }}" value="{{ inv.claimant }}"></td>
+                        <td><span class="filename-link" onclick="openPreview('/static/uploads/{{ inv.file_path }}')">查看</span></td>
+                        <td>
+                            <div class="view-text"><button type="button" class="btn btn-edit" style="padding:2px 6px;" onclick="toggleEdit('{{ inv.id }}', true)">改</button>
+                            <a href="/delete_invoice/{{ inv.id }}" class="btn btn-red" style="padding:2px 6px;">删</a></div>
+                            <div class="edit-mode"><button type="button" class="btn btn-green" style="padding:2px 6px;" onclick="saveEdit('{{ inv.id }}')">存</button></div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </form>
+    </div>
+
+    <div id="preview_modal"><div class="modal-content"><button onclick="closePreview()" style="position:absolute;top:-30px;right:0;color:white;background:none;border:none;font-size:20px;cursor:pointer;">×</button><iframe id="preview_frame"></iframe></div></div>
+
+    <script>
+        let batchData = [];
+
+        function handleFiles(input) {
+            let formData = new FormData();
+            for (let file of input.files) { formData.append('files', file); }
+            fetch('/upload_batch', {method: 'POST', body: formData}).then(r => r.json()).then(data => { batchData = data; sortAndRender(); document.getElementById('preview_section').style.display = 'block'; });
+        }
+
+        function sortAndRender() {
+            batchData.sort((a, b) => a.date.replace(/[^0-9]/g, '').localeCompare(b.date.replace(/[^0-9]/g, '')));
+            const body = document.getElementById('preview_body'); body.innerHTML = ''; let total = 0;
+            batchData.forEach((item, index) => {
+                total += parseFloat(item.amount || 0);
+                body.innerHTML += `<tr><td>${index+1}</td><td><span class="filename-link" onclick="openPreview('/static/uploads/${item.filename}')">${item.original_name}</span></td>
+                <td><input type="text" class="preview-input" value="${item.date}" onchange="updateVal(${index}, 'date', this.value)"></td>
+                <td><input type="number" class="preview-input" value="${item.amount}" onchange="updateVal(${index}, 'amount', this.value)"></td>
+                <td><input type="text" class="preview-input" value="${item.seller}" onchange="updateVal(${index}, 'seller', this.value)"></td>
+                <td><input type="text" class="preview-input" value="${item.category}" onchange="updateVal(${index}, 'category', this.value)"></td>
+                <td><input type="text" class="preview-input" value="${item.content}" onchange="updateVal(${index}, 'content', this.value)"></td>
+                <td><input type="text" class="preview-input" value="${item.claimant}" onchange="updateVal(${index}, 'claimant', this.value)"></td>
+                <td><button class="btn btn-red" onclick="removeItem(${index})">移</button></td></tr>`;
+            });
+            document.getElementById('preview_total').innerText = '￥' + total.toFixed(2);
+        }
+
+        function updateVal(i, f, v) { batchData[i][f] = v; if(f=='date'||f=='amount') sortAndRender(); }
+        function removeItem(i) { batchData.splice(i, 1); sortAndRender(); }
+        function saveBatchInvoices() { fetch('/save_invoices', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(batchData)}).then(() => location.reload()); }
+
+        function toggleEdit(id, isE) { const row = document.getElementById('row-'+id); row.querySelectorAll('.view-text').forEach(v => v.style.display = isE?'none':'block'); row.querySelectorAll('.edit-mode').forEach(e => e.style.display = isE?'block':'none'); }
+
+        function saveEdit(id) {
+            const data = { id: id, amount: document.getElementById('amt-'+id).value, category: document.getElementById('cat-'+id).value, content: document.getElementById('con-'+id).value, claimant: document.getElementById('cla-'+id).value };
+            fetch('/update_invoice_detail', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(() => location.reload());
+        }
+
+        // 功能 2: 全选逻辑（仅全选当前可见行）
+        function toggleAll(source) {
+            const rows = document.querySelectorAll('.inv-row');
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const cb = row.querySelector('input[name="selected_invoices"]');
+                    if (cb) cb.checked = source.checked;
+                }
+            });
+            updateSelectedTotal();
+        }
+
+        // 功能 1: 实时汇总选中金额
+        function updateSelectedTotal() {
+            let total = 0;
+            const checkedBoxes = document.querySelectorAll('input[name="selected_invoices"]:checked');
+            checkedBoxes.forEach(cb => {
+                total += parseFloat(cb.getAttribute('data-amount')) || 0;
+            });
+            document.getElementById('selected_total_amount').innerText = '￥' + total.toFixed(2);
+        }
+
+        function applyFilter() {
+            const start = document.getElementById('d_start').value;
+            const end = document.getElementById('d_end').value;
+            const cat = document.getElementById('f_cat').value;
+            const cla = document.getElementById('f_cla').value;
+            document.querySelectorAll('.inv-row').forEach(row => {
+                const rDate = row.dataset.date, rCat = row.dataset.cat, rCla = row.dataset.cla;
+                let show = true;
+                if(start && rDate < start) show = false;
+                if(end && rDate > end) show = false;
+                if(cat && rCat !== cat) show = false;
+                if(cla && rCla !== cla) show = false;
+                row.style.display = show ? '' : 'none';
+                // 隐藏行自动取消选中
+                if(!show) row.querySelector('input[name="selected_invoices"]').checked = false;
+            });
+            document.getElementById('check_all').checked = false;
+            updateSelectedTotal();
+        }
+
+        function resetFilter() {
+            document.getElementById('d_start').value = ''; document.getElementById('d_end').value = '';
+            document.getElementById('f_cat').value = ''; document.getElementById('f_cla').value = '';
+            applyFilter();
+        }
+
+        function openPreview(u) { document.getElementById('preview_frame').src = u; document.getElementById('preview_modal').style.display = 'block'; }
+        function closePreview() { document.getElementById('preview_modal').style.display = 'none'; }
+    </script>
+</body>
+</html>
