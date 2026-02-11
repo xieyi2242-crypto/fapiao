@@ -1,0 +1,6 @@
+flask
+flask_sqlalchemy
+gunicorn
+pdfplumber
+pandas
+openpyxl
